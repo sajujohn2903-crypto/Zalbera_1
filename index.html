@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zalbera — Your signature scent</title>
+<link rel="preload" as="image" href="img/hero-oud.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Italiana&family=Archivo:wght@300;400;500&display=swap" rel="stylesheet">
@@ -68,7 +69,10 @@ header.solid .logo .m{width:24px;height:33px}
 /* hero */
 .hero{position:relative;height:calc(100svh - 40px);min-height:640px;margin-top:-86px;overflow:hidden;display:flex;align-items:center;background:#050302}
 .hero-bg{position:absolute;inset:0;pointer-events:none}
-.hero-bg img{width:100%;height:100%;object-fit:cover;object-position:50% 55%;filter:brightness(.78);animation:drift 18s ease-in-out infinite alternate;transform-origin:50% 70%}
+.hero-bg img,.hero-bg canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 55%;filter:brightness(.82);animation:drift 18s ease-in-out infinite alternate;transform-origin:50% 70%}
+.hero-bg canvas{opacity:0;transition:opacity 1.2s}
+.hero-bg.gl canvas{opacity:1}
+.hero-bg.gl img{visibility:hidden}
 @keyframes drift{from{transform:scale(1)}to{transform:scale(1.045)}}
 .hero-shade{position:absolute;inset:0;pointer-events:none;background:
   linear-gradient(90deg,rgba(5,3,2,.7) 0%,rgba(5,3,2,.45) 30%,rgba(5,3,2,.1) 46%,rgba(5,3,2,0) 56%),
@@ -280,7 +284,7 @@ footer{border-top:1px solid var(--line);padding:80px 0 30px;background:#030201}
 
 <main id="top">
 <section class="hero">
-  <div class="hero-bg ri" style="transition-delay:.1s"><img src="img/hero-satin.jpg" alt="Zalbera Rose Mystique on black satin"></div>
+  <div class="hero-bg ri" style="transition-delay:.1s"><img src="img/hero-oud.jpg" alt="Zalbera Oud Rosara with rose, oud wood and amber in drifting smoke" id="heroImg"><canvas id="smokeGL" aria-hidden="true"></canvas></div>
   <div class="hero-shade"></div>
   <div class="wrap hero-t">
     <h1 class="display ri" style="transition-delay:.35s">Signature<br>scent<small>is somewhere in here</small></h1>
@@ -500,6 +504,54 @@ $('#bagBtn').onclick=()=>{const n=cnt();n?location.href='product.html#'+rd()[0].
 $('#sub').addEventListener('submit',e=>{e.preventDefault();$('#subMsg').textContent=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($('#em').value.trim())?'Thank you — you’re on the list.':'Please enter a valid email.'});
 $('#yr').textContent=new Date().getFullYear();
 
+})();
+
+/* ---------- hero: drifting smoke (WebGL), the bottle and props stay still ---------- */
+(function(){
+  const cv=document.getElementById('smokeGL'), wrap=cv&&cv.parentElement; if(!cv) return;
+  const gl=cv.getContext('webgl',{premultipliedAlpha:false,antialias:false}); if(!gl) return;
+  const VS='attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+  const FS=`precision highp float;
+  uniform sampler2D uImg,uMask;uniform vec2 uRes,uImgSize,uPos;uniform float uT;
+  float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+  float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+  float fbm(vec2 p){float v=0.,a=.5;for(int k=0;k<5;k++){v+=a*n(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
+  void main(){
+    vec2 fc=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y);
+    float sc=max(uRes.x/uImgSize.x,uRes.y/uImgSize.y); vec2 disp=uImgSize*sc; vec2 off=(uRes-disp)*uPos;
+    vec2 uv=(fc-off)/disp;
+    float m=texture2D(uMask,uv).r;
+    vec2 p=uv*vec2(3.2,2.2); float t=uT;
+    vec2 q=vec2(fbm(p+vec2(0.,t*.10)),fbm(p+vec2(5.2,1.3+t*.08)));
+    vec2 r=vec2(fbm(p+3.*q+vec2(1.7,9.2-t*.14)),fbm(p+3.*q+vec2(8.3,2.8-t*.12)));
+    vec2 d=(r-.5)*vec2(.022,.03)*m;
+    d.y+= -.006*m*(fbm(p*.7+vec2(0.,-t*.05))-.5);
+    vec3 c=texture2D(uImg,clamp(uv+d,0.,1.)).rgb;
+    float wisp=fbm(p*1.6+vec2(0.,-t*.18)+2.*r);
+    c+=c*m*.22*(wisp-.45);
+    gl_FragColor=vec4(c,1.);
+  }`;
+  const sh=(t,src)=>{const o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(o);return o};
+  let pr;try{pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,VS));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(pr);gl.useProgram(pr)}catch(e){console.warn(e);return}
+  const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const U=k=>gl.getUniformLocation(pr,k);
+  const tex=(unit,img)=>{const t=gl.createTexture();gl.activeTexture(gl.TEXTURE0+unit);gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);return t};
+  const load=src=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=src});
+  const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  Promise.all([load(document.getElementById('heroImg').src),load('img/hero-oud-mask.png')]).then(([img,mask])=>{
+    tex(0,img);tex(1,mask);gl.uniform1i(U('uImg'),0);gl.uniform1i(U('uMask'),1);gl.uniform2f(U('uImgSize'),img.naturalWidth,img.naturalHeight);
+    let vis=true;new IntersectionObserver(([e])=>vis=e.isIntersecting).observe(cv);
+    const size=()=>{const dpr=Math.min(devicePixelRatio||1,innerWidth<760?1.5:2);cv.width=Math.round(cv.clientWidth*dpr);cv.height=Math.round(cv.clientHeight*dpr);gl.viewport(0,0,cv.width,cv.height);
+      gl.uniform2f(U('uRes'),cv.width,cv.height);gl.uniform2f(U('uPos'),.5,innerWidth<=760?.5:.55)};
+    size();addEventListener('resize',size);
+    const t0=performance.now();let first=true;
+    (function frame(){ if(vis||first){gl.uniform1f(U('uT'),still?0:(performance.now()-t0)/1000);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);if(first){first=false;wrap.classList.add('gl')}}
+      if(!still)requestAnimationFrame(frame)})();
+  }).catch(e=>console.warn('smoke off',e));
 })();
 </script>
 </body>
